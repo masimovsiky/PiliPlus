@@ -15,7 +15,9 @@ $NewOverScrollIndicator = "362b1de29974ffc1ed6faa826e1df870d7bec75f";
 $BottomSheetAndroidPatch = "lib/scripts/bottom_sheet_android.patch"
 
 # https://github.com/bggRGjQaUbCoE/PiliPlus/issues/1906
-$BottomSheetIOSFlutterPatch = "lib/scripts/bottom_sheet_ios_flutter.patch"
+# FLUTTER 3.50 COMPAT: the cupertino/route.dart hunks were ported to 3.50.1
+# (the gesture detector constructor no longer takes `super.key`).
+$BottomSheetIOSFlutterPatch = "lib/scripts/bottom_sheet_ios_flutter_350.patch"
 $BottomSheetIOSPiliPlusPatch = "lib/scripts/bottom_sheet_ios_piliplus.patch"
 
 # https://github.com/bggRGjQaUbCoE/PiliPlus/issues/1662
@@ -146,7 +148,7 @@ switch ($platform.ToLower()) {
     }
     "ios" {
         $patches += $ScrollViewPatch
-        # FLUTTER 3.50 COMPAT: $BottomSheetIOSFlutterPatch skipped (iOS back-gesture cosmetic only; conflicts at cupertino/route.dart:698 in 3.50)
+        $patches += $BottomSheetIOSFlutterPatch
         $patches += $NavigatorPatch
     }
     "linux" {
@@ -249,6 +251,30 @@ try {
 }
 
 flutter pub get
+
+# FLUTTER 3.50 COMPAT: nativeapi's desktop entry point uses Dart APIs this SDK
+# does not expose (Isolate.create, NativeCallable.isolateGroupBound), which
+# breaks Dart kernel compilation even though runNativeApp() is never called on
+# iOS/Android. Replace it with a stub.
+$NativeApiDir = Get-ChildItem "$PubCacheDir/hosted/pub.dev" -Directory |
+    Where-Object { $_.Name -like "nativeapi-*" } |
+    Select-Object -Last 1
+
+if ($NativeApiDir) {
+    $NativeApiFile = Join-Path $NativeApiDir.FullName "lib/src/run_native_app.dart"
+    if (Test-Path $NativeApiFile) {
+        Write-Host "patching nativeapi: $NativeApiFile"
+        Set-Content -Path $NativeApiFile -Encoding utf8NoBOM -Value @'
+// Patched for the Flutter 3.50 toolchain.
+// The original implementation needs Dart APIs that this SDK does not expose
+// (Isolate.create, NativeCallable.isolateGroupBound). runNativeApp() is a
+// desktop-only entry point and is never called on iOS or Android.
+void runNativeApp(void Function() main) {
+  throw UnsupportedError('runNativeApp() is unavailable in this build');
+}
+'@
+    }
+}
 
 $MaterialUiDir = Get-ChildItem "$PubCacheDir/hosted/pub.dev" -Directory |
     Where-Object { $_.Name -like "material_ui-*" } |
