@@ -72,6 +72,16 @@ jobs:
               grep -n isiOSAppOnVision "$F" || echo "  no references left"
             fi
           fi
+          # Runner/SceneDelegate.swift overrides a method returning
+          # UIWindowScene.WindowingControlStyle, an iOS 26-only type. On older
+          # SDKs fall back to the default delegate (iOS 26 window controls only
+          # affect iPad windowing, not iPhone behaviour).
+          SDK_MAJOR=$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)
+          if [ "$SDK_MAJOR" -lt 26 ]; then
+            printf '%s\n' 'import Flutter' 'import UIKit' '' 'class SceneDelegate: FlutterSceneDelegate {}' > ios/Runner/SceneDelegate.swift
+            echo "SDK $SDK_MAJOR < 26: simplified SceneDelegate"
+            cat ios/Runner/SceneDelegate.swift
+          fi
 
       - name: Build iOS
         run: |
