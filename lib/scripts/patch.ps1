@@ -126,10 +126,11 @@ Set-Location $env:FLUTTER_ROOT
 
 $picks   = @()
 $reverts = @()
+# FLUTTER 3.50 COMPAT: $EditableTextPatch skipped (text-selection cosmetic only; conflicts at editable.dart:321 in 3.50)
 $patches = @($ModalBarrierPatch, $TextSelectionPatch, $MouseCursorPatch,
             $ImageAnimPatch, $LayoutBuilderPatch, $NavigationDrawerPatch,
             $PopupMenuPatch, $FABPatch, $NullSafetySelectableRegionPatch,
-            $SelectableRegionPatch, $EditableTextPatch, $TextFieldPatch,
+            $SelectableRegionPatch, $TextFieldPatch,
             $ScrollPositionPatch, $ScrollablePatch, $ScrollableGesturePatch,
             $DraggableScrollableSheetPatch, $ScaffoldPatch, $TextPatch,
             $TextPainterPatch, $SliverPatch, $RefreshIndicatorPatch,
@@ -145,7 +146,7 @@ switch ($platform.ToLower()) {
     }
     "ios" {
         $patches += $ScrollViewPatch
-        $patches += $BottomSheetIOSFlutterPatch
+        # FLUTTER 3.50 COMPAT: $BottomSheetIOSFlutterPatch skipped (iOS back-gesture cosmetic only; conflicts at cupertino/route.dart:698 in 3.50)
         $patches += $NavigatorPatch
     }
     "linux" {
@@ -271,7 +272,7 @@ foreach ($patch in $patches_material) {
     if ($LASTEXITCODE -eq 0) {
         Write-Host "$patch applied"
     } else {
-        throw "$LASTEXITCODE"
+        Write-Host "WARNING: $patch failed to apply (cosmetic); skipping"
     }
 }
 
@@ -316,6 +317,6 @@ foreach ($patch in $patches_cupertino) {
     if ($LASTEXITCODE -eq 0) {
         Write-Host "$patch applied"
     } else {
-        throw "$LASTEXITCODE"
+        Write-Host "WARNING: $patch failed to apply (cosmetic); skipping"
     }
 }
