@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-26, macos-26-arm64]
+        os: [macos-15, macos-26]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -41,8 +41,31 @@ jobs:
       - name: Toolchain info
         run: |
           xcodebuild -version || true
+          xcrun --sdk iphoneos --show-sdk-version || true
           swift --version || true
           uname -m
+
+      # connectivity_plus 7.3.1 uses NWPath.isUltraConstrained (iOS 26 SDK only).
+      # On older SDKs neutralise just that condition so the plugin still compiles.
+      - name: Compat patch for older iOS SDK
+        run: |
+          set -eu
+          SDK=$(xcrun --sdk iphoneos --show-sdk-version)
+          echo "Detected iOS SDK: $SDK"
+          CONN=$(ls -d "$HOME"/.pub-cache/hosted/pub.dev/connectivity_plus-* 2>/dev/null | sort -V | tail -1 || true)
+          echo "pub cache: ${CONN:-<none>}"
+          [ -n "${CONN:-}" ] || exit 0
+          F="$CONN/ios/connectivity_plus/Sources/connectivity_plus/PathMonitorConnectivityProvider.swift"
+          [ -f "$F" ] || exit 0
+          if awk -v sdk="$SDK" 'BEGIN{split(sdk,a,"."); exit !(a[1]+0 < 26)}'; then
+            if grep -q "isUltraConstrained" "$F"; then
+              echo "SDK < 26: dropping isUltraConstrained usage in connectivity_plus"
+              sed -i '' 's/path\.isUltraConstrained/false/g' "$F"
+              sed -i '' 's/\.isUltraConstrained/false/g' "$F"
+              grep -n "isUltraConstrained" "$F" || echo "no remaining references"
+              sed -n '20,45p' "$F"
+            fi
+          fi
 
       - name: Build iOS
         run: |
