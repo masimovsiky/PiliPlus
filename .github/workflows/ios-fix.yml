@@ -97,6 +97,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          archive: false
           name: iOS-fix-${{ matrix.os }}
           path: PiliPlus_ios_*.ipa
+          if-no-files-found: warn
