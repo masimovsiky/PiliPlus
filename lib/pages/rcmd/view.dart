@@ -91,6 +91,11 @@ class _RcmdPageState extends State<RcmdPage>
         response != null && response.isNotEmpty
             ? SliverGrid.builder(
                 gridDelegate: gridDelegate,
+                // Feed cells are stateless and cheap to rebuild; keeping them
+                // alive only makes the list hold more state and do more work
+                // when new cards are materialised while scrolling.
+                addAutomaticKeepAlives: false,
+                addSemanticIndexes: false,
                 itemBuilder: (context, index) {
                   if (index == response.length - 1) {
                     controller.onLoadMore();

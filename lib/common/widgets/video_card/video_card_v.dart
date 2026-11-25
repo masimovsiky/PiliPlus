@@ -109,53 +109,63 @@ class VideoCardV extends StatelessWidget {
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        Card(
-          child: InkWell(
-            onTap: onPushDetail,
-            onLongPress: onLongPress,
-            onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
-            borderRadius: const .all(.circular(12)),
-            child: Column(
-              crossAxisAlignment: .start,
-              children: [
-                AspectRatio(
-                  aspectRatio: Style.aspectRatio,
-                  child: LayoutBuilder(
-                    builder: (context, boxConstraints) {
-                      double maxWidth = boxConstraints.maxWidth;
-                      double maxHeight = boxConstraints.maxHeight;
-                      if (variant == 1) {
-                        return const ColoredBox(color: Color(0xFF3A3A3A));
-                      }
-                      return Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          NetworkImgLayer(
-                            src: videoItem.cover,
-                            width: maxWidth,
-                            height: maxHeight,
-                            borderRadius: const .vertical(top: .circular(12)),
-                          ),
-                          if (videoItem.duration > 0)
-                            PBadge(
-                              bottom: 6,
-                              right: 7,
-                              size: .small,
-                              type: .gray,
-                              text: DurationUtils.formatDuration(
-                                videoItem.duration,
-                              ),
+        // Isolate the card's paint from the rest of the list: scrolling then
+        // only re-paints what actually changed instead of the whole viewport.
+        RepaintBoundary(
+          child: Card(
+            child: InkWell(
+              onTap: onPushDetail,
+              onLongPress: onLongPress,
+              onSecondaryTap: PlatformUtils.isMobile ? null : onLongPress,
+              borderRadius: const .all(.circular(12)),
+              child: Column(
+                crossAxisAlignment: .start,
+                children: [
+                  AspectRatio(
+                    aspectRatio: Style.aspectRatio,
+                    child: LayoutBuilder(
+                      builder: (context, boxConstraints) {
+                        double maxWidth = boxConstraints.maxWidth;
+                        double maxHeight = boxConstraints.maxHeight;
+                        if (variant == 1) {
+                          return const ColoredBox(color: Color(0xFF3A3A3A));
+                        }
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            // No fade animation: every newly loaded cover used to
+                            // run a 120ms fade, and with a viewport full of covers
+                            // that animation work lands on the UI thread exactly
+                            // while new items are being materialised.
+                            NetworkImgLayer(
+                              src: videoItem.cover,
+                              width: maxWidth,
+                              height: maxHeight,
+                              fadeInDuration: Duration.zero,
+                              fadeOutDuration: Duration.zero,
+                              borderRadius: const .vertical(top: .circular(12)),
                             ),
-                        ],
-                      );
-                    },
+                            if (videoItem.duration > 0)
+                              PBadge(
+                                bottom: 6,
+                                right: 7,
+                                size: .small,
+                                type: .gray,
+                                text: DurationUtils.formatDuration(
+                                  videoItem.duration,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
-                ),
-                if (variant == 2)
-                  const Expanded(child: SizedBox.shrink())
-                else
-                  content(context),
-              ],
+                  if (variant == 2)
+                    const Expanded(child: SizedBox.shrink())
+                  else
+                    content(context),
+                ],
+              ),
             ),
           ),
         ),
