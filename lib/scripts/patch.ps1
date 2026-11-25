@@ -276,10 +276,21 @@ void runNativeApp(void Function() main) {
     }
 }
 
+# PiliPlus: keep the system Now Playing entry (i.e. the Dynamic Island card)
+# off while the app is on screen, and publish it only once we are backgrounded.
+# audio_service publishes it as soon as playback starts; upstream issues
+# #1420 / #2009 / #2646 / #3108 all ask for background-only behaviour.
+$AudioServicePatcher = "lib/scripts/patch_audio_service.py"
+if (Test-Path $AudioServicePatcher) {
+    python3 $AudioServicePatcher "$env:HOME/.pub-cache"
+    if ($LASTEXITCODE -ne 0) {
+        throw "patch_audio_service.py failed"
+    }
+}
+
 $MaterialUiDir = Get-ChildItem "$PubCacheDir/hosted/pub.dev" -Directory |
     Where-Object { $_.Name -like "material_ui-*" } |
     Select-Object -Last 1
-
 if (-not $MaterialUiDir) {
     throw "material_ui package not found in pub cache"
 }
