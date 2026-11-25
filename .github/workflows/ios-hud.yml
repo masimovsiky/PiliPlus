@@ -1,4 +1,4 @@
-name: Build iOS (frame HUD + 60Hz control)
+name: Build iOS (frame HUD)
 
 on:
   workflow_dispatch:
@@ -55,14 +55,17 @@ jobs:
             printf '%s\n' 'import Flutter' 'import UIKit' '' 'class SceneDelegate: FlutterSceneDelegate {}' > ios/Runner/SceneDelegate.swift
           fi
 
-      - name: Build A - 120Hz + frame HUD
+      - name: Build 120Hz + frame HUD
         run: |
           set -u
           V=${version//+/_}
           flutter build ios --release --no-codesign \
             --dart-define-from-file=pili_release.json \
             --dart-define=FRAME_HUD=true --no-pub -v > /tmp/b_hud.log 2>&1 || true
-          tail -c 40000 /tmp/b_hud.log
+          echo "=== dart / compile errors ==="
+          grep -n -E "\.dart:[0-9]+:[0-9]+: (Error|Warning)|Error: |error: " /tmp/b_hud.log | head -40 || true
+          echo "=== tail ==="
+          tail -c 30000 /tmp/b_hud.log || true
           if [ ! -d build/ios/iphoneos/Runner.app ]; then
             echo "::error::Runner.app missing (hud)"
             exit 1
@@ -71,28 +74,6 @@ jobs:
           find Payload/Runner.app/Frameworks -type d -name "*.framework" \
             -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \; || true
           zip -r9q "PiliPlus_ios_${V}_hud.ipa" Payload/Runner.app
-          ls -la PiliPlus_ios_*.ipa
-
-      - name: Build B - forced 60Hz + frame HUD
-        run: |
-          set -u
-          V=${version//+/_}
-          /usr/libexec/PlistBuddy -c "Set :CADisableMinimumFrameDurationOnPhone false" ios/Runner/Info.plist \
-            || /usr/libexec/PlistBuddy -c "Add :CADisableMinimumFrameDurationOnPhone bool false" ios/Runner/Info.plist
-          echo "CADisableMinimumFrameDurationOnPhone = $(/usr/libexec/PlistBuddy -c 'Print :CADisableMinimumFrameDurationOnPhone' ios/Runner/Info.plist)"
-          flutter build ios --release --no-codesign \
-            --dart-define-from-file=pili_release.json \
-            --dart-define=FRAME_HUD=true --no-pub -v > /tmp/b_60.log 2>&1 || true
-          tail -c 20000 /tmp/b_60.log
-          if [ ! -d build/ios/iphoneos/Runner.app ]; then
-            echo "::error::Runner.app missing (60hz)"
-            exit 1
-          fi
-          rm -f Payload
-          ln -sfn ./build/ios/iphoneos Payload
-          find Payload/Runner.app/Frameworks -type d -name "*.framework" \
-            -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \; || true
-          zip -r9q "PiliPlus_ios_${V}_60hz.ipa" Payload/Runner.app
           ls -la PiliPlus_ios_*.ipa
 
       - name: Upload
