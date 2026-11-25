@@ -17,11 +17,87 @@ const List<String> _variantLabels = <String>[
   'V3 plain',
 ];
 
+// ---------------------------------------------------------------------------
+// Slow-callback probe
+// ---------------------------------------------------------------------------
+//
+// Frames that take 200ms on the UI thread cannot be blamed on rendering, so
+// record every zone callback that takes longer than the threshold together with
+// the stack it started from. The HUD then names the code responsible instead of
+// us guessing.
+
+class SlowCallback {
+  SlowCallback(this.ms, this.trace);
+
+  final int ms;
+  final String trace;
+}
+
+final List<SlowCallback> slowCallbacks = <SlowCallback>[];
+const int _slowThresholdMs = 40;
+int _depth = 0;
+
+String _shortTrace(StackTrace st) {
+  final List<String> frames = <String>[];
+  for (final String line in st.toString().split('\n')) {
+    final String t = line.trim();
+    if (!t.startsWith('#')) {
+      continue;
+    }
+    // Skip the harness frames themselves.
+    if (t.contains('frame_hud.dart') || t.contains('dart:async')) {
+      continue;
+    }
+    frames.add(t.length > 80 ? '${t.substring(0, 80)}…' : t);
+    if (frames.length == 2) {
+      break;
+    }
+  }
+  return frames.join('\n');
+}
+
+void _record(int ms, StackTrace st) {
+  slowCallbacks.add(SlowCallback(ms, _shortTrace(st)));
+  if (slowCallbacks.length > 6) {
+    slowCallbacks.removeAt(0);
+  }
+}
+
+T _probe<T>(T Function() body) {
+  final bool outer = _depth == 0;
+  final Stopwatch sw = Stopwatch()..start();
+  final StackTrace st = StackTrace.current;
+  _depth++;
+  try {
+    return body();
+  } finally {
+    _depth--;
+    if (outer && sw.elapsedMilliseconds >= _slowThresholdMs) {
+      _record(sw.elapsedMilliseconds, st);
+    }
+  }
+}
+
+ZoneSpecification probeZoneSpecification() => ZoneSpecification(
+  run: <R>(Zone self, ZoneDelegate parent, Zone zone, R Function() f) =>
+      _probe<R>(() => parent.run<R>(zone, f)),
+  runUnary: <R, T>(Zone self, ZoneDelegate parent, Zone zone, R Function(T) f, T arg) =>
+      _probe<R>(() => parent.runUnary<R, T>(zone, f, arg)),
+  runBinary: <R, T1, T2>(
+    Zone self,
+    ZoneDelegate parent,
+    Zone zone,
+    R Function(T1, T2) f,
+    T1 arg1,
+    T2 arg2,
+  ) => _probe<R>(() => parent.runBinary<R, T1, T2>(zone, f, arg1, arg2)),
+);
+
+// ---------------------------------------------------------------------------
+// HUD
+// ---------------------------------------------------------------------------
+
 /// Diagnostic HUD: real frame timings instead of "feels janky".
-///
-/// Shows the refresh rate the engine actually got, frames per second, and the
-/// UI / raster thread cost per frame (avg, p95, max), plus how many frames blew
-/// the 120Hz (8.33ms) and 60Hz (16.7ms) budgets.
 class FrameHud extends StatefulWidget {
   const FrameHud({super.key});
 
@@ -59,6 +135,12 @@ class _FrameHudState extends State<FrameHud> {
     fontSize: 11,
     height: 1.3,
     color: Color(0xFFFFD166),
+  );
+
+  static const TextStyle _monoRed = TextStyle(
+    fontSize: 10,
+    height: 1.25,
+    color: Color(0xFFFF8A80),
   );
 
   @override
@@ -128,6 +210,7 @@ class _FrameHudState extends State<FrameHud> {
     _ui.clear();
     _raster.clear();
     _total.clear();
+    slowCallbacks.clear();
     _totalFrames = 0;
     _fps = 0;
     _windowFrames = 0;
@@ -138,6 +221,7 @@ class _FrameHudState extends State<FrameHud> {
   @override
   Widget build(BuildContext context) {
     final double budget = _refreshRate > 90 ? 8.33 : 16.7;
+    final List<SlowCallback> slow = slowCallbacks.reversed.take(3).toList();
     return Align(
       alignment: Alignment.topLeft,
       child: SafeArea(
@@ -171,6 +255,11 @@ class _FrameHudState extends State<FrameHud> {
                         '>16.7 ${_share(_total, 16.7).toStringAsFixed(0)}%',
                         style: _monoAmber,
                       ),
+                      if (slow.isEmpty)
+                        Text('SLOW -', style: _monoRed)
+                      else
+                        for (final SlowCallback s in slow)
+                          Text('SLOW ${s.ms}ms\n${s.trace}', style: _monoRed),
                     ],
                   ),
                 ),

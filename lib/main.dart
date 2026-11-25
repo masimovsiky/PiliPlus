@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:PiliPlus/build_config.dart';
@@ -92,7 +93,18 @@ Future<void> _initAppPath() async {
   appSupportDirPath = (await getApplicationSupportDirectory()).path;
 }
 
-void main() async {
+void main() {
+  // Diagnostic builds only: run the whole app inside a zone that records UI
+  // thread callbacks slower than 40ms (with their stack) so the HUD can name
+  // the code responsible for 200ms frames.
+  if (const bool.fromEnvironment('FRAME_HUD')) {
+    runZoned(_mainBody, zoneSpecification: probeZoneSpecification());
+  } else {
+    _mainBody();
+  }
+}
+
+Future<void> _mainBody() async {
   ScaledWidgetsFlutterBinding.ensureInitialized();
   // Diagnostic builds only: force Flutter's performance overlay (FPS + UI /
   // Raster frame times) so frame drops can be measured on device.
