@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-15-arm64, macos-14, macos-26]
+        os: [macos-15, macos-14]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -42,7 +42,7 @@ jobs:
         run: |
           xcodebuild -version || true
           xcrun --sdk iphoneos --show-sdk-version || true
-          swift --version || true
+          flutter --version || true
           uname -m
 
       # Two plugins call iOS 26 / 26.1-only SDK APIs, which breaks builds on
@@ -60,7 +60,6 @@ jobs:
               sed -i '' 's/path\.isUltraConstrained/false/g' "$F"
               sed -i '' 's/\.isUltraConstrained/false/g' "$F"
               echo "patched connectivity_plus (isUltraConstrained)"
-              grep -n isUltraConstrained "$F" || echo "  no references left"
             fi
           fi
           DEV=$(ls -d "$PC"/device_info_plus-* 2>/dev/null | sort -V | tail -1 || true)
@@ -69,42 +68,56 @@ jobs:
             if [ -f "$F" ] && grep -q isiOSAppOnVision "$F"; then
               sed -i '' 's/\[info isiOSAppOnVision\]/NO/g' "$F"
               echo "patched device_info_plus (isiOSAppOnVision)"
-              grep -n isiOSAppOnVision "$F" || echo "  no references left"
             fi
           fi
           # Runner/SceneDelegate.swift overrides a method returning
-          # UIWindowScene.WindowingControlStyle, an iOS 26-only type. On older
-          # SDKs fall back to the default delegate (iOS 26 window controls only
-          # affect iPad windowing, not iPhone behaviour).
+          # UIWindowScene.WindowingControlStyle, an iOS 26-only type.
           SDK_MAJOR=$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)
           if [ "$SDK_MAJOR" -lt 26 ]; then
             printf '%s\n' 'import Flutter' 'import UIKit' '' 'class SceneDelegate: FlutterSceneDelegate {}' > ios/Runner/SceneDelegate.swift
             echo "SDK $SDK_MAJOR < 26: simplified SceneDelegate"
-            cat ios/Runner/SceneDelegate.swift
           fi
 
-      - name: Build iOS
+      - name: Build A - with performance overlay
         run: |
-          set -o pipefail
-          flutter build ios --release --no-codesign --dart-define-from-file=pili_release.json --no-pub -v > /tmp/build_ios.log 2>&1 || true
-          echo "=== tail of flutter build log ==="
-          tail -c 200000 /tmp/build_ios.log
-          echo "=== build artefacts ==="
-          ls -la build/ios/iphoneos/ || true
-          du -sh build/ios/iphoneos/Runner.app 2>/dev/null || true
-
-      - name: Package IPA
-        if: always()
-        run: |
-          set -e
+          set -u
+          V=${version//+/_}
+          flutter build ios --release --no-codesign \
+            --dart-define-from-file=pili_release.json \
+            --dart-define=PERF_OVERLAY=true --no-pub -v > /tmp/build_perf.log 2>&1 || true
+          echo "=== tail of build log (perf) ==="
+          tail -c 120000 /tmp/build_perf.log
           if [ ! -d build/ios/iphoneos/Runner.app ]; then
-            echo "::error::Runner.app not produced by the build"
+            echo "::error::Runner.app missing (perf build)"
             exit 1
           fi
-          ln -sf ./build/ios/iphoneos Payload
-          # make AltSign happy...
-          find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \; || true
-          zip -r9 PiliPlus_ios_${{env.version}}.ipa Payload/Runner.app
+          ln -sfn ./build/ios/iphoneos Payload
+          find Payload/Runner.app/Frameworks -type d -name "*.framework" \
+            -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \; || true
+          zip -r9q "PiliPlus_ios_${V}_perf-overlay.ipa" Payload/Runner.app
+          ls -la PiliPlus_ios_*.ipa
+
+      - name: Build B - Impeller disabled (Skia fallback)
+        run: |
+          set -u
+          V=${version//+/_}
+          /usr/libexec/PlistBuddy -c "Set :FLTEnableImpeller false" ios/Runner/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" ios/Runner/Info.plist
+          echo "FLTEnableImpeller = $(/usr/libexec/PlistBuddy -c 'Print :FLTEnableImpeller' ios/Runner/Info.plist)"
+          rm -rf build/ios
+          flutter build ios --release --no-codesign \
+            --dart-define-from-file=pili_release.json --no-pub -v > /tmp/build_noimp.log 2>&1 || true
+          echo "=== tail of build log (no impeller) ==="
+          tail -c 60000 /tmp/build_noimp.log
+          if [ ! -d build/ios/iphoneos/Runner.app ]; then
+            echo "::error::Runner.app missing (no-impeller build)"
+            exit 1
+          fi
+          rm -f Payload
+          ln -sfn ./build/ios/iphoneos Payload
+          find Payload/Runner.app/Frameworks -type d -name "*.framework" \
+            -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \; || true
+          zip -r9q "PiliPlus_ios_${V}_no-impeller.ipa" Payload/Runner.app
           ls -la PiliPlus_ios_*.ipa
 
       - name: Upload ios release

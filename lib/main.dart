@@ -93,6 +93,11 @@ Future<void> _initAppPath() async {
 
 void main() async {
   ScaledWidgetsFlutterBinding.ensureInitialized();
+  // Diagnostic builds only: force Flutter's performance overlay (FPS + UI /
+  // Raster frame times) so frame drops can be measured on device.
+  if (const bool.fromEnvironment('PERF_OVERLAY')) {
+    WidgetsApp.showPerformanceOverlayOverride = true;
+  }
   MediaKit.ensureInitialized();
   await _initAppPath();
   try {
