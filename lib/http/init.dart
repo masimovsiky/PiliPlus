@@ -210,7 +210,12 @@ class Request {
       headers: {
         'user-agent': 'Dart/3.6 (dart:io)', // Http2Adapter不会自动添加标头
         if (!_enableHttp2) 'connection': 'keep-alive',
-        'accept-encoding': 'br,gzip',
+        // Only advertise gzip: `brotli` is a pure-Dart decoder that runs
+        // synchronously on the UI isolate (see _responseDecoder below). A
+        // single feed response takes 100-200ms to inflate that way, which
+        // shows up as one huge UI-thread frame every time a page is loaded.
+        // gzip goes through dart:io's native zlib instead.
+        'accept-encoding': 'gzip',
       },
       responseDecoder: _responseDecoder, // Http2Adapter没有自动解压
       persistentConnection: true,
