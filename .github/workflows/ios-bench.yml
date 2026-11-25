@@ -47,6 +47,8 @@ jobs:
             -exec codesign --force --sign - {} \; || true
           zip -r9q ScrollBench.ipa Payload/Runner.app
           ls -la ScrollBench.ipa
+          cp ScrollBench.ipa "$GITHUB_WORKSPACE/ScrollBench.ipa"
+          ls -la "$GITHUB_WORKSPACE/ScrollBench.ipa"
 
       - name: Upload bench
         if: always()

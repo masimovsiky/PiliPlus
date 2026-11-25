@@ -98,6 +98,15 @@ void main() async {
   if (const bool.fromEnvironment('PERF_OVERLAY')) {
     WidgetsApp.showPerformanceOverlayOverride = true;
   }
+  // Diagnostic builds only: enlarge the decoded-image cache. Covers are
+  // decoded at logical size x devicePixelRatio, so a 3x iPhone holds 2.25x the
+  // bytes per cover that a 2x iPad does, and the default 100MB budget can
+  // thrash (evict + re-decode) while scrolling a feed.
+  if (const bool.fromEnvironment('BIG_IMG_CACHE')) {
+    PaintingBinding.instance.imageCache
+      ..maximumSize = 3000
+      ..maximumSizeBytes = 400 << 20;
+  }
   MediaKit.ensureInitialized();
   await _initAppPath();
   try {
