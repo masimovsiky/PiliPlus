@@ -100,12 +100,7 @@ class _RcmdPageState extends State<RcmdPage>
                 key: ValueKey<int>(identityHashCode(response)),
                 gridDelegate: gridDelegate,
                 delegate: _AppendOnlyChildBuilderDelegate(
-                  addAutomaticKeepAlives: false,
-                  addSemanticIndexes: false,
-                  childCount: controller.lastRefreshAt != null
-                      ? response.length + 1
-                      : response.length,
-                  builder: (context, index) {
+                  (context, index) {
                     if (index == response.length - 1) {
                       controller.onLoadMore();
                     }
@@ -155,6 +150,11 @@ class _RcmdPageState extends State<RcmdPage>
                       );
                     }
                   },
+                  addAutomaticKeepAlives: false,
+                  addSemanticIndexes: false,
+                  childCount: controller.lastRefreshAt != null
+                      ? response.length + 1
+                      : response.length,
                 ),
               )
             : HttpError(onReload: controller.onReload),
@@ -179,8 +179,8 @@ class _RcmdPageState extends State<RcmdPage>
 /// the new children up during layout, so there is no need to invalidate the
 /// cards that are already on screen.
 class _AppendOnlyChildBuilderDelegate extends SliverChildBuilderDelegate {
-  _AppendOnlyChildBuilderDelegate({
-    required super.builder,
+  _AppendOnlyChildBuilderDelegate(
+    super.builder, {
     required super.childCount,
     super.addAutomaticKeepAlives,
     super.addSemanticIndexes,
