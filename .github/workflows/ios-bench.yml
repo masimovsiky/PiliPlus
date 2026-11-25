@@ -1,0 +1,57 @@
+name: Build scroll benchmark app
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bench:
+    name: Bench (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-14]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+
+      - name: Create minimal project
+        run: |
+          set -eu
+          flutter create --org com.dshbench --project-name scrolltest /tmp/scrolltest
+          cp bench/main.dart /tmp/scrolltest/lib/main.dart
+          flutter --version
+
+      - name: Build bench app
+        run: |
+          set -u
+          cd /tmp/scrolltest
+          flutter build ios --release --no-codesign -v > /tmp/bench_build.log 2>&1 || true
+          echo "=== tail ==="
+          tail -c 40000 /tmp/bench_build.log
+          ls -la build/ios/iphoneos/ || true
+          if [ ! -d build/ios/iphoneos/Runner.app ]; then
+            echo "::error::bench Runner.app missing"
+            exit 1
+          fi
+          ln -sfn ./build/ios/iphoneos Payload
+          find Payload/Runner.app/Frameworks -type d -name "*.framework" \
+            -exec codesign --force --sign - {} \; || true
+          zip -r9q ScrollBench.ipa Payload/Runner.app
+          ls -la ScrollBench.ipa
+
+      - name: Upload bench
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          name: ScrollBench-${{ matrix.os }}
+          path: ScrollBench.ipa
