@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show FrameTiming, FlutterView;
 
 import 'package:flutter/material.dart';
 
