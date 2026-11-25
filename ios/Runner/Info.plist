@@ -141,5 +141,10 @@
 		</array>
 		<key>ITSAppUsesNonExemptEncryption</key>
 		<false/>
+		<!-- Diagnostics: expose Documents/ (lifecycle.log) in the Files app. -->
+		<key>UIFileSharingEnabled</key>
+		<true/>
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
 	</dict>
 </plist>
