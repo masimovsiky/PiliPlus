@@ -4,6 +4,19 @@ import 'dart:ui' show FrameTiming, FlutterView;
 
 import 'package:flutter/material.dart';
 
+/// Which level of card detail to render, cycled from the HUD.
+///
+/// 0 = full card, 1 = no cover image, 2 = no text block, 3 = plain colour box.
+/// Used to attribute UI-thread cost to a specific part of a feed card.
+final ValueNotifier<int> cardVariant = ValueNotifier<int>(0);
+
+const List<String> _variantLabels = <String>[
+  'V0 full',
+  'V1 no-img',
+  'V2 no-text',
+  'V3 plain',
+];
+
 /// Diagnostic HUD: real frame timings instead of "feels janky".
 ///
 /// Shows the refresh rate the engine actually got, frames per second, and the
@@ -111,46 +124,93 @@ class _FrameHudState extends State<FrameHud> {
       '${_avg(v).toStringAsFixed(1)} ${_pct(v, 0.95).toStringAsFixed(1)} '
       '${_max(v).toStringAsFixed(1)}';
 
+  void _reset() {
+    _ui.clear();
+    _raster.clear();
+    _total.clear();
+    _totalFrames = 0;
+    _fps = 0;
+    _windowFrames = 0;
+    _windowStart = DateTime.now();
+    setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final double budget = _refreshRate > 90 ? 8.33 : 16.7;
-    return IgnorePointer(
+    return Align(
+      alignment: Alignment.topLeft,
       child: SafeArea(
-        child: Align(
-          alignment: Alignment.topLeft,
-          child: Container(
-            margin: const EdgeInsets.only(left: 6, top: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-            decoration: BoxDecoration(
-              color: const Color(0xCC000000),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: DefaultTextStyle(
-              style: _mono,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    '${_refreshRate.toStringAsFixed(0)}Hz ${_fps.toStringAsFixed(0)}fps n=$_totalFrames',
-                    style: _monoGreen,
+        child: Container(
+          margin: const EdgeInsets.only(left: 6, top: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xCC000000),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: DefaultTextStyle(
+            style: _mono,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  '${_refreshRate.toStringAsFixed(0)}Hz ${_fps.toStringAsFixed(0)}fps n=$_totalFrames',
+                  style: _monoGreen,
+                ),
+                IgnorePointer(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text('UI ${_fmt(_ui)}', style: _mono),
+                      Text('RS ${_fmt(_raster)}', style: _mono),
+                      Text('MX ${_fmt(_total)}', style: _mono),
+                      Text(
+                        '>${budget.toStringAsFixed(1)} ${_share(_total, budget).toStringAsFixed(0)}%  '
+                        '>16.7 ${_share(_total, 16.7).toStringAsFixed(0)}%',
+                        style: _monoAmber,
+                      ),
+                    ],
                   ),
-                  Text('UI ${_fmt(_ui)}', style: _mono),
-                  Text('RS ${_fmt(_raster)}', style: _mono),
-                  Text('MX ${_fmt(_total)}', style: _mono),
-                  Text(
-                    '>${budget.toStringAsFixed(1)} ${_share(_total, budget).toStringAsFixed(0)}%  '
-                    '>16.7 ${_share(_total, 16.7).toStringAsFixed(0)}%',
-                    style: _monoAmber,
-                  ),
-                ],
-              ),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _chip(
+                      _variantLabels[cardVariant.value],
+                      () {
+                        cardVariant.value = (cardVariant.value + 1) % 4;
+                        _reset();
+                      },
+                    ),
+                    const SizedBox(width: 6),
+                    _chip('reset', _reset),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+
+  Widget _chip(String label, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    behavior: HitTestBehavior.opaque,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(fontSize: 11, color: Color(0xFF8ED6FF)),
+      ),
+    ),
+  );
 
   @override
   void dispose() {

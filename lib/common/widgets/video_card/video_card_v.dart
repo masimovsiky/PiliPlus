@@ -15,6 +15,7 @@ import 'package:PiliPlus/utils/extension/dimension_ext.dart';
 import 'package:PiliPlus/utils/id_utils.dart';
 import 'package:PiliPlus/utils/page_utils.dart';
 import 'package:PiliPlus/utils/platform_utils.dart';
+import 'package:PiliPlus/utils/frame_hud.dart';
 import 'package:flutter_smart_dialog/flutter_smart_dialog.dart';
 import 'package:intl/intl.dart';
 import 'package:material_ui/material_ui.dart';
@@ -81,6 +82,25 @@ class VideoCardV extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!const bool.fromEnvironment('FRAME_HUD')) {
+      return _buildCard(context, 0);
+    }
+    return ValueListenableBuilder<int>(
+      valueListenable: cardVariant,
+      builder: (BuildContext context, int variant, Widget? _) =>
+          _buildCard(context, variant),
+    );
+  }
+
+  Widget _buildCard(BuildContext context, int variant) {
+    if (variant == 3) {
+      return Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF303030),
+          borderRadius: BorderRadius.circular(12),
+        ),
+      );
+    }
     void onLongPress() => imageSaveDialog(
       title: videoItem.title,
       cover: videoItem.cover,
@@ -104,6 +124,9 @@ class VideoCardV extends StatelessWidget {
                     builder: (context, boxConstraints) {
                       double maxWidth = boxConstraints.maxWidth;
                       double maxHeight = boxConstraints.maxHeight;
+                      if (variant == 1) {
+                        return const ColoredBox(color: Color(0xFF3A3A3A));
+                      }
                       return Stack(
                         clipBehavior: Clip.none,
                         children: [
@@ -128,7 +151,10 @@ class VideoCardV extends StatelessWidget {
                     },
                   ),
                 ),
-                content(context),
+                if (variant == 2)
+                  const Expanded(child: SizedBox.shrink())
+                else
+                  content(context),
               ],
             ),
           ),
