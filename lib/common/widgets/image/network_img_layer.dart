@@ -4,6 +4,7 @@ import 'package:PiliPlus/models/common/image_type.dart';
 import 'package:PiliPlus/utils/extension/num_ext.dart';
 import 'package:PiliPlus/utils/image_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
+import 'package:PiliPlus/utils/frame_hud.dart';
 import 'package:cached_network_image_ce/cached_network_image.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -42,6 +43,13 @@ class NetworkImgLayer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (const bool.fromEnvironment('FRAME_HUD')) {
+      return probeBuild<Widget>('img', () => _buildInner(context));
+    }
+    return _buildInner(context);
+  }
+
+  Widget _buildInner(BuildContext context) {
     final isEmote = type == ImageType.emote;
     final isAvatar = type == ImageType.avatar;
     if (src?.isNotEmpty == true) {

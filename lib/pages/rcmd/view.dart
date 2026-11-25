@@ -89,66 +89,73 @@ class _RcmdPageState extends State<RcmdPage>
       Loading() => _buildSkeleton,
       Success(:final response) =>
         response != null && response.isNotEmpty
-            ? SliverGrid.builder(
+            ? SliverGrid(
+                // Appending a page must not rebuild the cards already on
+                // screen. The default delegate reports shouldRebuild == true on
+                // every change, so each "load more" re-built every visible
+                // card inside a single frame: that is the 50-110ms UI-thread
+                // spike seen while scrolling a long distance.
+                // The key only changes when the list is replaced (pull to
+                // refresh), which does need a full rebuild.
+                key: ValueKey<int>(identityHashCode(response)),
                 gridDelegate: gridDelegate,
-                // Feed cells are stateless and cheap to rebuild; keeping them
-                // alive only makes the list hold more state and do more work
-                // when new cards are materialised while scrolling.
-                addAutomaticKeepAlives: false,
-                addSemanticIndexes: false,
-                itemBuilder: (context, index) {
-                  if (index == response.length - 1) {
-                    controller.onLoadMore();
-                  }
-                  if (controller.lastRefreshAt != null) {
-                    if (controller.lastRefreshAt == index) {
-                      return GestureDetector(
-                        onTap: () => controller
-                          ..animateToTop()
-                          ..onRefresh(),
-                        child: Card(
-                          child: Container(
-                            alignment: Alignment.center,
-                            padding: const .symmetric(horizontal: 10),
-                            child: Text(
-                              '上次看到这里\n点击刷新',
-                              textAlign: .center,
-                              style: TextStyle(
-                                color: colorScheme.onSurfaceVariant,
+                delegate: _AppendOnlyChildBuilderDelegate(
+                  addAutomaticKeepAlives: false,
+                  addSemanticIndexes: false,
+                  childCount: controller.lastRefreshAt != null
+                      ? response.length + 1
+                      : response.length,
+                  builder: (context, index) {
+                    if (index == response.length - 1) {
+                      controller.onLoadMore();
+                    }
+                    if (controller.lastRefreshAt != null) {
+                      if (controller.lastRefreshAt == index) {
+                        return GestureDetector(
+                          onTap: () => controller
+                            ..animateToTop()
+                            ..onRefresh(),
+                          child: Card(
+                            child: Container(
+                              alignment: Alignment.center,
+                              padding: const .symmetric(horizontal: 10),
+                              child: Text(
+                                '上次看到这里\n点击刷新',
+                                textAlign: .center,
+                                style: TextStyle(
+                                  color: colorScheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),
-                        ),
+                        );
+                      }
+                      final actualIndex = index > controller.lastRefreshAt!
+                          ? index - 1
+                          : index;
+                      return VideoCardV(
+                        videoItem: response[actualIndex],
+                        onRemove: () {
+                          if (controller.lastRefreshAt != null &&
+                              actualIndex < controller.lastRefreshAt!) {
+                            controller.lastRefreshAt =
+                                controller.lastRefreshAt! - 1;
+                          }
+                          controller.loadingState
+                            ..value.data!.removeAt(actualIndex)
+                            ..refresh();
+                        },
+                      );
+                    } else {
+                      return VideoCardV(
+                        videoItem: response[index],
+                        onRemove: () => controller.loadingState
+                          ..value.data!.removeAt(index)
+                          ..refresh(),
                       );
                     }
-                    final actualIndex = index > controller.lastRefreshAt!
-                        ? index - 1
-                        : index;
-                    return VideoCardV(
-                      videoItem: response[actualIndex],
-                      onRemove: () {
-                        if (controller.lastRefreshAt != null &&
-                            actualIndex < controller.lastRefreshAt!) {
-                          controller.lastRefreshAt =
-                              controller.lastRefreshAt! - 1;
-                        }
-                        controller.loadingState
-                          ..value.data!.removeAt(actualIndex)
-                          ..refresh();
-                      },
-                    );
-                  } else {
-                    return VideoCardV(
-                      videoItem: response[index],
-                      onRemove: () => controller.loadingState
-                        ..value.data!.removeAt(index)
-                        ..refresh(),
-                    );
-                  }
-                },
-                itemCount: controller.lastRefreshAt != null
-                    ? response.length + 1
-                    : response.length,
+                  },
+                ),
               )
             : HttpError(onReload: controller.onReload),
       Error(:final errMsg) => HttpError(
@@ -165,4 +172,20 @@ class _RcmdPageState extends State<RcmdPage>
       child: VideoCardVSkeleton(),
     ),
   );
+}
+
+/// A [SliverChildBuilderDelegate] that never rebuilds children that already
+/// exist. Appending items only changes [childCount]; the render sliver picks
+/// the new children up during layout, so there is no need to invalidate the
+/// cards that are already on screen.
+class _AppendOnlyChildBuilderDelegate extends SliverChildBuilderDelegate {
+  _AppendOnlyChildBuilderDelegate({
+    required super.builder,
+    required super.childCount,
+    super.addAutomaticKeepAlives,
+    super.addSemanticIndexes,
+  });
+
+  @override
+  bool shouldRebuild(covariant SliverChildBuilderDelegate oldDelegate) => false;
 }

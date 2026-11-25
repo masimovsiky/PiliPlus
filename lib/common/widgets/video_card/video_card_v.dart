@@ -93,6 +93,13 @@ class VideoCardV extends StatelessWidget {
   }
 
   Widget _buildCard(BuildContext context, int variant) {
+    if (const bool.fromEnvironment('FRAME_HUD')) {
+      return probeBuild<Widget>('card', () => _buildCardInner(context, variant));
+    }
+    return _buildCardInner(context, variant);
+  }
+
+  Widget _buildCardInner(BuildContext context, int variant) {
     if (variant == 3) {
       return Container(
         decoration: BoxDecoration(

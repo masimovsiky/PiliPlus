@@ -18,6 +18,39 @@ const List<String> _variantLabels = <String>[
 ];
 
 // ---------------------------------------------------------------------------
+// Build-time probe
+// ---------------------------------------------------------------------------
+//
+// Frame-level numbers say the UI thread normally takes ~2ms per frame but
+// occasionally 100ms. To find which build is responsible, time the suspect
+// widgets' build() calls and surface the worst offenders in the HUD.
+
+final Map<String, int> buildMaxMs = <String, int>{};
+
+T probeBuild<T>(String name, T Function() f) {
+  final Stopwatch sw = Stopwatch()..start();
+  try {
+    return f();
+  } finally {
+    final int ms = sw.elapsedMicroseconds;
+    if (ms > (buildMaxMs[name] ?? 0)) {
+      buildMaxMs[name] = ms;
+    }
+  }
+}
+
+String buildMaxSummary() {
+  final List<MapEntry<String, int>> entries = buildMaxMs.entries.toList()
+    ..sort((MapEntry<String, int> a, MapEntry<String, int> b) =>
+        b.value.compareTo(a.value));
+  return entries
+      .take(3)
+      .map((MapEntry<String, int> e) =>
+          '${e.key} ${(e.value / 1000).toStringAsFixed(1)}ms')
+      .join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Slow-callback probe
 // ---------------------------------------------------------------------------
 //
@@ -260,6 +293,10 @@ class _FrameHudState extends State<FrameHud> {
                       else
                         for (final SlowCallback s in slow)
                           Text('SLOW ${s.ms}ms\n${s.trace}', style: _monoRed),
+                      Text(
+                        buildMaxMs.isEmpty ? 'BUILD -' : buildMaxSummary(),
+                        style: _monoRed,
+                      ),
                     ],
                   ),
                 ),
