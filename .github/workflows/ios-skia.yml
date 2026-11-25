@@ -1,0 +1,92 @@
+name: Build iOS (Skia / Impeller off)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-skia:
+    name: Skia build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-14]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+
+      - name: Set and Extract version
+        shell: pwsh
+        run: lib/scripts/build.ps1
+
+      - name: Apply Patch
+        shell: pwsh
+        run: lib/scripts/patch.ps1 iOS
+
+      - name: Compat patch for plugin SDK APIs
+        run: |
+          set -eu
+          PC="$HOME/.pub-cache/hosted/pub.dev"
+          CONN=$(ls -d "$PC"/connectivity_plus-* 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "${CONN:-}" ]; then
+            F="$CONN/ios/connectivity_plus/Sources/connectivity_plus/PathMonitorConnectivityProvider.swift"
+            if [ -f "$F" ] && grep -q isUltraConstrained "$F"; then
+              sed -i '' 's/path\.isUltraConstrained/false/g' "$F"
+              sed -i '' 's/\.isUltraConstrained/false/g' "$F"
+              echo "patched connectivity_plus"
+            fi
+          fi
+          DEV=$(ls -d "$PC"/device_info_plus-* 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "${DEV:-}" ]; then
+            F="$DEV/ios/device_info_plus/Sources/device_info_plus/FPPDeviceInfoPlusPlugin.m"
+            if [ -f "$F" ] && grep -q isiOSAppOnVision "$F"; then
+              sed -i '' 's/\[info isiOSAppOnVision\]/NO/g' "$F"
+              echo "patched device_info_plus"
+            fi
+          fi
+          SDK_MAJOR=$(xcrun --sdk iphoneos --show-sdk-version | cut -d. -f1)
+          if [ "$SDK_MAJOR" -lt 26 ]; then
+            printf '%s\n' 'import Flutter' 'import UIKit' '' 'class SceneDelegate: FlutterSceneDelegate {}' > ios/Runner/SceneDelegate.swift
+            echo "SDK $SDK_MAJOR < 26: simplified SceneDelegate"
+          fi
+
+      - name: Force Skia renderer
+        run: |
+          set -eu
+          /usr/libexec/PlistBuddy -c "Set :FLTEnableImpeller false" ios/Runner/Info.plist 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :FLTEnableImpeller bool false" ios/Runner/Info.plist
+          echo "FLTEnableImpeller = $(/usr/libexec/PlistBuddy -c 'Print :FLTEnableImpeller' ios/Runner/Info.plist)"
+
+      - name: Build iOS (Skia)
+        run: |
+          set -u
+          V=${version//+/_}
+          flutter build ios --release --no-codesign \
+            --dart-define-from-file=pili_release.json --no-pub -v > /tmp/build_skia.log 2>&1 || true
+          echo "=== tail of build log ==="
+          tail -c 100000 /tmp/build_skia.log
+          if [ ! -d build/ios/iphoneos/Runner.app ]; then
+            echo "::error::Runner.app missing"
+            exit 1
+          fi
+          ln -sfn ./build/ios/iphoneos Payload
+          find Payload/Runner.app/Frameworks -type d -name "*.framework" \
+            -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \; || true
+          zip -r9q "PiliPlus_ios_${V}_skia.ipa" Payload/Runner.app
+          ls -la PiliPlus_ios_*.ipa
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          name: iOS-skia-${{ matrix.os }}
+          path: PiliPlus_ios_*.ipa
