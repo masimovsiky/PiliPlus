@@ -3,11 +3,27 @@ import 'package:PiliPlus/utils/extension/theme_ext.dart';
 import 'package:PiliPlus/utils/font_utils.dart';
 import 'package:PiliPlus/utils/storage_pref.dart';
 import 'package:cupertino_ui/cupertino_ui.dart' show CupertinoThemeData;
-import 'package:flutter/foundation.dart' show PlatformDispatcher;
+import 'package:flutter/foundation.dart'
+    show PlatformDispatcher, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:material_ui/material_ui.dart';
 
 abstract final class ThemeUtils {
   static late ThemeData lightTheme;
+
+  /// Font that ships Chinese glyphs on the running platform, so Chinese text
+  /// does not need per-glyph system fallback. Only used when the user has not
+  /// picked a custom font.
+  static String? get _platformCjkFontFamily {
+    if (kIsWeb) {
+      return null;
+    }
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS => 'PingFang SC',
+      TargetPlatform.macOS => 'PingFang SC',
+      TargetPlatform.android => 'sans-serif',
+      _ => null,
+    };
+  }
 
   static late ThemeData darkTheme;
 
@@ -33,7 +49,11 @@ abstract final class ThemeUtils {
     bool isDark = false,
   }) {
     final fontWeight = Pref.appFontWeight;
-    final fontFamily = FontUtils.fontFamily;
+    // Flutter resolves Chinese glyphs through per-glyph font fallback when the
+    // default font has no CJK coverage. Each lookup happens during paragraph
+    // layout on the UI thread; naming the platform CJK font explicitly keeps
+    // the whole run in one font and takes that cost off the 120Hz frame budget.
+    final fontFamily = FontUtils.fontFamily ?? _platformCjkFontFamily;
 
     TextTheme? textTheme;
     if (fontWeight != .normal) {
