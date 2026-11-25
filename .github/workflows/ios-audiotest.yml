@@ -1,0 +1,62 @@
+name: Build background-audio test app
+
+on:
+  workflow_dispatch:
+
+jobs:
+  audiotest:
+    name: AudioTest (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-14]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.1
+
+      - name: Create minimal project
+        run: |
+          set -eu
+          flutter create --org com.dshbench --project-name audiotest /tmp/audiotest
+          cp bench/AudioTestAppDelegate.swift /tmp/audiotest/ios/Runner/AppDelegate.swift
+          cd /tmp/audiotest/ios/Runner
+          # background audio so the Now Playing entry survives in the background
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" Info.plist
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string audio" Info.plist
+          /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" Info.plist
+
+      - name: Build test app
+        run: |
+          set -u
+          cd /tmp/audiotest
+          flutter build ios --release --no-codesign -v > /tmp/audio_build.log 2>&1 || true
+          echo "=== errors ==="
+          grep -n -E "\.swift:[0-9]+:[0-9]+: error|error: |Error: " /tmp/audio_build.log | head -20 || true
+          tail -c 20000 /tmp/audio_build.log || true
+          if [ ! -d build/ios/iphoneos/Runner.app ]; then
+            echo "::error::Runner.app missing"
+            exit 1
+          fi
+          ln -sfn ./build/ios/iphoneos Payload
+          find Payload/Runner.app/Frameworks -type d -name "*.framework" \
+            -exec codesign --force --sign - {} \; || true
+          zip -r9q AudioTest.ipa Payload/Runner.app
+          ls -la AudioTest.ipa
+          cp AudioTest.ipa "$GITHUB_WORKSPACE/AudioTest.ipa"
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          name: AudioTest-${{ matrix.os }}
+          path: AudioTest.ipa
