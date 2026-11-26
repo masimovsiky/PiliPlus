@@ -476,10 +476,26 @@ private final class PipSession: NSObject {
 
 @available(iOS 15.0, *)
 extension PipSession: AVPictureInPictureControllerDelegate {
+  /// Broadcasts PiP state so the Now Playing publisher (audio_service) can stop
+  /// advertising a media card that iOS cannot open: tapping the lock screen /
+  /// Dynamic Island entry asks the system to launch the app, which does nothing
+  /// for sideloaded builds on iOS 27.3. The PiP window's restore button is the
+  /// working way back, so the entry is hidden while PiP is on screen.
+  static let pipStateNotification = Notification.Name("com.example.piliplus/pipState")
+
+  private func postPipState(_ active: Bool) {
+    NotificationCenter.default.post(
+      name: Self.pipStateNotification,
+      object: nil,
+      userInfo: ["active": active]
+    )
+  }
+
   func pictureInPictureControllerWillStartPictureInPicture(
     _ pictureInPictureController: AVPictureInPictureController
   ) {
     isActive = true
+    postPipState(true)
     stopRequested = false
     restoring = false
     frameAvailable(force: true)
@@ -500,6 +516,7 @@ extension PipSession: AVPictureInPictureControllerDelegate {
     failedToStartPictureInPictureWithError error: Error
   ) {
     isActive = false
+    postPipState(false)
     backgroundOnStart = false
     sendEvent("onStateChanged", ["active": false, "error": error.localizedDescription])
     DispatchQueue.main.async { [weak self] in self?.onStop?() }
@@ -518,6 +535,7 @@ extension PipSession: AVPictureInPictureControllerDelegate {
     _ pictureInPictureController: AVPictureInPictureController
   ) {
     isActive = false
+    postPipState(false)
     // Neither restored nor stopped by the app: closed from the PiP window.
     let closed = !restoring && !stopRequested
     stopRequested = false

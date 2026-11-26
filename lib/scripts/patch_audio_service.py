@@ -16,6 +16,8 @@ MARKER = "PiliPlusIsAppForeground"
 
 HELPER = r'''
 // ---- PiliPlus patch: Now Playing only while backgrounded ----
+static BOOL PiliPlusPipActive = NO;
+
 static BOOL PiliPlusIsAppForeground(void) {
 #if TARGET_OS_IPHONE
     if (@available(iOS 13.0, *)) {
@@ -51,11 +53,24 @@ NOTIFY = r'''            // PiliPlus patch: refresh Now Playing when the app mov
                                                          name:UIApplicationWillResignActiveNotification
                                                        object:nil];
 #endif
+            // PiP is on screen: its own restore button is the way back, and the
+            // Now Playing card cannot be opened for sideloaded builds.
+            [[NSNotificationCenter defaultCenter] addObserver:instance
+                                                     selector:@selector(piliPlusPipStateChanged:)
+                                                         name:@"com.example.piliplus/pipState"
+                                                       object:nil];
 '''
 
 METHOD = r'''
 // PiliPlus patch
 - (void)piliPlusAppStateChanged:(NSNotification *)notification {
+    [self updateNowPlayingInfo];
+}
+
+// PiliPlus patch: PiP state comes from PipPlugin (app module) via
+// NotificationCenter because the two live in different pods/modules.
+- (void)piliPlusPipStateChanged:(NSNotification *)notification {
+    PiliPlusPipActive = [notification.userInfo[@"active"] boolValue];
     [self updateNowPlayingInfo];
 }
 
@@ -67,9 +82,10 @@ OLD_PUBLISH = '''    if (updated) {
     }
 '''
 
-NEW_PUBLISH = '''    if (PiliPlusIsAppForeground()) {
-        // The app is on screen: drop the Now Playing entry (and with it the
-        // Dynamic Island card). It comes back as soon as we are backgrounded.
+NEW_PUBLISH = '''    if (PiliPlusIsAppForeground() || PiliPlusPipActive) {
+        // App on screen, or a PiP window is showing: drop the Now Playing entry.
+        // The Dynamic Island card cannot be opened on sideloaded iOS 27.3 builds,
+        // so while PiP offers a working return button the card is misleading.
         center.nowPlayingInfo = nil;
         if (@available(iOS 13.0, macOS 10.12.2, *)) {
             center.playbackState = MPNowPlayingPlaybackStateStopped;
